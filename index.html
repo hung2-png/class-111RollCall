@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>學生 QR Code 簽到</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <style>
+    *{box-sizing:border-box}body{font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;text-align:center;margin:0;padding:16px;background:#f7f7f7;color:#172033}main{max-width:760px;margin:auto}h2{margin:12px 0;font-size:2rem}.controls{display:flex;gap:10px;align-items:end;justify-content:center;flex-wrap:wrap}.controls label{font-weight:700;text-align:left;flex:1;min-width:260px}#cameraSelect{font-size:16px;padding:8px;margin:8px 0 0;width:100%;max-width:100%}button{font:inherit;padding:9px 16px;border-radius:8px;border:1px solid #175cd3;cursor:pointer}button.primary{background:#175cd3;color:#fff}button.secondary{background:#fff;color:#175cd3}video{width:95vw;max-width:640px;border:2px solid #333;border-radius:12px;background:#000;margin:16px auto 0;display:block}#result{margin-top:20px;font-size:1.8em;font-weight:bold;min-height:2em;padding:12px;border-radius:12px;background:#eef2f7}.success{background:#e7f8ee!important;color:#087443}.duplicate{background:#fff4df!important;color:#9a5b00}.error{background:#ffebeb!important;color:#aa2020}.tip{color:#666;font-size:14px;margin-top:16px}canvas{display:none}@media(max-width:520px){h2{font-size:1.55rem}.controls{align-items:stretch}.controls button{flex:1}#result{font-size:1.35em}}
+  </style>
+</head>
+<body>
+<main>
+  <h2>📷 學生 QR Code 簽到</h2>
+  <div class="controls">
+    <label for="cameraSelect">選擇攝影機：<select id="cameraSelect"><option value="">自動選擇攝影機</option></select></label>
+    <button id="refreshBtn" type="button" class="secondary">重新偵測</button>
+    <button id="startBtn" type="button" class="primary">開啟相機</button>
+    <button id="stopBtn" type="button" class="secondary" hidden>停止相機</button>
+  </div>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <div id="result">等待掃描中…</div>
+  <div class="tip">請使用最新版 Chrome、Edge 或 Safari，並允許網站使用攝影機。</div>
+</main>
+<script>
+const GAS_WEB_APP_URL='https://script.google.com/a/macros/kssh.khc.edu.tw/s/AKfycbzXBiiEoFkl9UchOHdLBT_V_MSEHVY2C4mefHwCXOF9GjPiOZmMoq5J7EsM4N_5ArLg_w/exec';
+const $=id=>document.getElementById(id);
+let stream=null,running=false,lastCode='',lastAt=0,detector=null;
+$('startBtn').onclick=startCamera;$('stopBtn').onclick=stopCamera;$('refreshBtn').onclick=()=>loadCameras(true);$('cameraSelect').onchange=async()=>{if(running){stopCamera();await startCamera()}};window.addEventListener('pagehide',stopCamera);loadCameras(false);
+async function loadCameras(requestPermission){if(!navigator.mediaDevices?.enumerateDevices)return;let temp=null;try{if(requestPermission)temp=await navigator.mediaDevices.getUserMedia({video:true,audio:false});const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'),current=$('cameraSelect').value;$('cameraSelect').innerHTML='<option value="">自動選擇攝影機</option>'+devices.map((d,i)=>`<option value="${escapeHtml(d.deviceId)}">${escapeHtml(d.label||`攝影機 ${i+1}（允許權限後顯示名稱）`)}</option>`).join('');if(devices.some(d=>d.deviceId===current))$('cameraSelect').value=current}catch(e){show('無法取得攝影機清單：'+e.message,'error')}finally{temp?.getTracks().forEach(t=>t.stop())}}
+async function startCamera(){if(running)return;try{if(!navigator.mediaDevices?.getUserMedia)throw new Error('瀏覽器不支援相機');detector='BarcodeDetector'in window?new BarcodeDetector({formats:['qr_code']}):null;if(!detector&&typeof jsQR!=='function')throw new Error('QR Code 解碼器載入失敗');const id=$('cameraSelect').value,video=id?{deviceId:{exact:id},width:{ideal:1280},height:{ideal:720}}:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}};stream=await navigator.mediaDevices.getUserMedia({video,audio:false});$('video').srcObject=stream;await $('video').play();running=true;lastCode='';lastAt=0;await loadCameras(false);const actual=stream.getVideoTracks()[0]?.getSettings?.().deviceId;if(actual)$('cameraSelect').value=actual;$('startBtn').hidden=true;$('stopBtn').hidden=false;show('相機掃描中，請將 QR Code 對準畫面');requestAnimationFrame(scanFrame)}catch(e){stopCamera();show('無法啟動相機：'+e.message,'error')}}
+function stopCamera(){running=false;stream?.getTracks().forEach(t=>t.stop());stream=null;detector=null;$('video').srcObject=null;$('startBtn').hidden=false;$('stopBtn').hidden=true}
+async function scanFrame(){if(!running)return;try{let raw='',video=$('video');if(detector){const codes=await detector.detect(video);if(codes.length)raw=String(codes[0].rawValue||'').trim()}else if(video.videoWidth){const canvas=$('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});canvas.width=video.videoWidth;canvas.height=video.videoHeight;ctx.drawImage(video,0,0,canvas.width,canvas.height);const image=ctx.getImageData(0,0,canvas.width,canvas.height),code=jsQR(image.data,image.width,image.height,{inversionAttempts:'dontInvert'});if(code)raw=String(code.data||'').trim()}const now=Date.now();if(raw&&(raw!==lastCode||now-lastAt>3000)){lastCode=raw;lastAt=now;show('資料傳送中…');const result=await submitQRData(raw);show(result.message||'簽到完成',result.code==='SUCCESS'?'success':result.code==='DUPLICATE'?'duplicate':'error')}}catch(e){}if(running)setTimeout(()=>requestAnimationFrame(scanFrame),180)}
+function submitQRData(qrData){return new Promise(resolve=>{const callback='handleScanResult_'+Date.now()+'_'+Math.floor(Math.random()*100000),script=document.createElement('script'),timer=setTimeout(()=>finish({message:'傳送逾時，請再試一次',code:'ERROR'}),12000);function finish(result){clearTimeout(timer);delete window[callback];script.remove();resolve(result)}window[callback]=finish;script.src=GAS_WEB_APP_URL+'?mode=jsonp&callback='+encodeURIComponent(callback)+'&qrData='+encodeURIComponent(qrData);script.onerror=()=>finish({message:'無法連線到 GAS',code:'ERROR'});document.body.appendChild(script)})}
+function show(text,kind=''){const el=$('result');el.textContent=text;el.className=kind}function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+</script>
+</body>
+</html>
