@@ -24,7 +24,7 @@
   <div class="tip">請使用最新版 Chrome、Edge 或 Safari，並允許網站使用攝影機。</div>
 </main>
 <script>
-const GAS_WEB_APP_URL='https://script.google.com/macros/s/AKfycbxU-jT-fSWRBLdBjz1FjW-M6wL-QW9GYc2YvNDCEvbclgMn72t73pm8zr7IEbYcp2C0cg/exec';
+const GAS_WEB_APP_URL='https://script.google.com/a/macros/kssh.khc.edu.tw/s/AKfycbxXAdEQ3mRkw8HTG3cIc12CgezobMX0ReigXgIJOCOZznd5UBtpIuPobLJSk39_OYveVg/exec';
 const $=id=>document.getElementById(id);
 let stream=null,running=false,lastCode='',lastAt=0,detector=null;
 $('startBtn').onclick=startCamera;$('stopBtn').onclick=stopCamera;$('refreshBtn').onclick=()=>loadCameras(true);$('cameraSelect').onchange=async()=>{if(running){stopCamera();await startCamera()}};window.addEventListener('pagehide',stopCamera);loadCameras(false);
